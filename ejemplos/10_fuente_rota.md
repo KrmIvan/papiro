@@ -1,6 +1,6 @@
 Japonés paso a paso - Leccion 3
 
-### しゅうまつ よてい第3課 週末の予定
+### 第3課 週末(しゅうまつ)の予定(よてい)
 
 # Lección 3: Planes para el fin de semana
 

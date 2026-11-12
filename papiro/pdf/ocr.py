@@ -111,7 +111,8 @@ def _run_tesseract(png: bytes, langs: list[str], psm: int, dpi: int = 300) -> li
         env = dict(os.environ)
         env.setdefault("OMP_THREAD_LIMIT", "1")
         proc = subprocess.run(
-            _tess_cmd() + [str(src), "stdout", "-l", "+".join(langs), "--psm", str(psm), "--dpi", str(dpi), "tsv"],
+            _tess_cmd() + [str(src), "stdout", "-l", "+".join(langs), "--psm", str(psm), "--dpi", str(dpi),
+                           "-c", "tessedit_create_tsv=1"],
             capture_output=True, env=env, timeout=600, **_no_window(),
         )
     if proc.returncode != 0:
@@ -292,6 +293,9 @@ def looks_vertical(img) -> bool:
 
 def rapidocr_installed() -> bool:
     import importlib.util
+
+    if os.environ.get("PAPIRO_SIN_RAPIDOCR") == "1":
+        return False
 
     return importlib.util.find_spec("rapidocr") is not None
 

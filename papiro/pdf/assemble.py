@@ -41,9 +41,12 @@ def detect_ruby(glyphs: list[Glyph], vertical: bool, from_ocr: bool = False) -> 
             for j in (cy - 1, cy, cy + 1):
                 yield from grid.get((i, j), ())
 
+    # En OCR el tamaño de letra es una estimación: se admite algo más de margen
+    top_ratio = 0.8 if from_ocr else 0.7
+
     def is_over(g: Glyph, b: Glyph, slack: float = 0.75) -> bool:
         """¿g es letra pequeña pegada encima (o a la derecha, en vertical) de b?"""
-        if b is g or not (0.28 <= g.size / b.size <= 0.7):
+        if b is g or not (0.28 <= g.size / b.size <= top_ratio):
             return False
         if vertical:
             return (
@@ -61,9 +64,7 @@ def detect_ruby(glyphs: list[Glyph], vertical: bool, from_ocr: bool = False) -> 
 
     cand = []
     for g in glyphs:
-        if g.size > 0.7 * max_size:
-            continue
-        if not (_ruby_char(g.text[0]) or (from_ocr and not g.text.isspace())):
+        if g.size > top_ratio * max_size or not _ruby_char(g.text[0]):
             continue
         if any(is_over(g, b) for b in near(g)):
             cand.append(g)
