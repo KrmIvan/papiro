@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Tesseract (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert tesseract-ocr-spa tesseract-ocr-eng xvfb python3-tk
+      - name: Tesseract (Windows)
+        if: runner.os == 'Windows'
+        run: choco install tesseract -y --no-progress
+      - name: Dependencias
+        run: python -m pip install -e ".[dev,gui]"
+      - name: Idiomas de Tesseract (Windows)
+        if: runner.os == 'Windows'
+        run: python -m papiro --instalar-idiomas
+      - name: Estado
+        run: python -m papiro --estado
+      - name: Tests (Ubuntu)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python -m pytest -q -rs
+      - name: Tests (Windows)
+        if: runner.os == 'Windows'
+        run: python -m pytest -q -rs
+
+  calidad:
+    name: Tests del modo calidad (docling)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert tesseract-ocr-spa tesseract-ocr-eng
+      - run: |
+          python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e ".[calidad,dev]"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-docling-v1
+      - run: python -m papiro --descargar-modelos
+      - run: python -m pytest -q -rs tests/test_pdf_quality.py -k calidad
+
+  instalador-linux:
+    name: install.sh (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar (modo rápido + OCR)
+        run: ./install.sh --si --sin-calidad
+      - name: Comprobar
+        run: |
+          set -e
+          .venv/bin/papiro --estado
+          test -f ~/.local/share/applications/papiro.desktop
+          .venv/bin/papiro tests/fixtures/pdf/09_ja_escaneado.pdf -o salida.md
+          grep -q "わたしは毎朝六時に起きます" salida.md
+          .venv/bin/papiro tests/fixtures/pdf/07_tategaki_furigana.pdf | grep -q "山(やま)の小(ちい)さな駅(えき)"
+          sudo apt-get install -y xvfb >/dev/null
+          xvfb-run -a .venv/bin/python -c "from papiro.gui import App, make_root; r = make_root(); App(r, ['tests/fixtures/pdf/03_tabla.pdf']); r.update(); r.destroy(); print('ventana ok')"
+
+  instalador-linux-calidad:
+    name: install.sh completo (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar todo
+        run: ./install.sh --si
+      - name: Comprobar
+        run: |
+          set -e
+          .venv/bin/papiro --estado | tee estado.txt
+          grep -q "Modo calidad (docling): instalado" estado.txt
+          .venv/bin/papiro tests/fixtures/pdf/08_vocabulario.pdf --modo calidad -o salida.md
+          grep -q "| しゅうまつ | 週末 | fin de semana |" salida.md
+
+  instalador-windows:
+    name: install.bat (Windows)
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar (modo rápido + OCR)
+        shell: cmd
+        run: install.bat /si /sin-calidad
+      - name: Comprobar
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.venv\Scripts\papiro.exe --estado
+          if ($LASTEXITCODE -ne 0) { throw "el OCR no quedó instalado" }
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Papiro.lnk'))) { throw "falta el icono del escritorio" }
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'Papiro.lnk'))) { throw "falta el icono del menú Inicio" }
+          .\.venv\Scripts\papiro.exe tests\fixtures\pdf\09_ja_escaneado.pdf -o salida.md
+          if (-not (Select-String -Path salida.md -Pattern "わたしは毎朝六時に起きます" -Encoding utf8 -Quiet)) { throw "el OCR japonés no funcionó" }
+          .\.venv\Scripts\python.exe -c "from papiro.gui import App, make_root; r = make_root(); App(r, ['tests/fixtures/pdf/03_tabla.pdf']); r.update(); r.destroy(); print('ventana ok')"
