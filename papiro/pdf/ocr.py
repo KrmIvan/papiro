@@ -46,6 +46,7 @@ def find_tesseract() -> str | None:
     if found:
         return found
     candidates = [
+        app_dir() / "tesseract" / "tesseract",  # copia propia, sin permisos de administrador
         Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tesseract-OCR" / "tesseract.exe",
         Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Tesseract-OCR" / "tesseract.exe",
         Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Tesseract-OCR" / "tesseract.exe",
